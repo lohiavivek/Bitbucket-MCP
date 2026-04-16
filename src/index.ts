@@ -20,7 +20,7 @@ const bb = new BitbucketClient({ workspace, apiToken });
 // ── MCP Server ───────────────────────────────────────────────────────────────
 
 const server = new McpServer({
-  name: "bitbucket-mcp",
+  name: "@lohiavivek/bitbucket-mcp",
   version: "1.0.0",
 });
 
