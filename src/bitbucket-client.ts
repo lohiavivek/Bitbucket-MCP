@@ -44,12 +44,21 @@ export interface PipelineStep {
   script_commands?: Array<{ name: string; action: string }>;
 }
 
+export interface Repository {
+  slug: string;
+  name: string;
+  description: string;
+  is_private: boolean;
+  updated_on: string;
+  links: { html: { href: string } };
+}
+
 export class BitbucketClient {
   private client: AxiosInstance;
-  private workspace: string;
+  readonly defaultWorkspace: string;
 
   constructor(config: BitbucketConfig) {
-    this.workspace = config.workspace;
+    this.defaultWorkspace = config.workspace;
     this.client = axios.create({
       baseURL: config.baseUrl ?? "https://api.bitbucket.org/2.0",
       headers: {
@@ -57,6 +66,22 @@ export class BitbucketClient {
         Authorization: `Bearer ${config.apiToken}`,
       },
     });
+  }
+
+  private ws(workspace?: string): string {
+    return workspace ?? this.defaultWorkspace;
+  }
+
+  // ── Repositories ───────────────────────────────────────────────────────────
+
+  async getRepositories(
+    workspace?: string,
+    options: { page?: number; pagelen?: number } = {}
+  ): Promise<{ values: Repository[]; size: number }> {
+    const res = await this.client.get(`/repositories/${this.ws(workspace)}`, {
+      params: { pagelen: options.pagelen ?? 50, page: options.page ?? 1 },
+    });
+    return res.data;
   }
 
   // ── Pull Requests ──────────────────────────────────────────────────────────
@@ -67,6 +92,7 @@ export class BitbucketClient {
       state?: "OPEN" | "MERGED" | "DECLINED" | "SUPERSEDED";
       page?: number;
       pagelen?: number;
+      workspace?: string;
     } = {}
   ): Promise<{ values: PullRequest[]; size: number; page: number }> {
     const params: Record<string, string | number> = {
@@ -76,7 +102,7 @@ export class BitbucketClient {
     if (options.state) params["state"] = options.state;
 
     const res = await this.client.get(
-      `/repositories/${this.workspace}/${repoSlug}/pullrequests`,
+      `/repositories/${this.ws(options.workspace)}/${repoSlug}/pullrequests`,
       { params }
     );
     return res.data;
@@ -84,10 +110,11 @@ export class BitbucketClient {
 
   async getPullRequestDetails(
     repoSlug: string,
-    prId: number
+    prId: number,
+    workspace?: string
   ): Promise<PullRequest> {
     const res = await this.client.get(
-      `/repositories/${this.workspace}/${repoSlug}/pullrequests/${prId}`
+      `/repositories/${this.ws(workspace)}/${repoSlug}/pullrequests/${prId}`
     );
     return res.data;
   }
@@ -101,6 +128,7 @@ export class BitbucketClient {
       description?: string;
       reviewers?: string[];
       closeSourceBranch?: boolean;
+      workspace?: string;
     }
   ): Promise<PullRequest> {
     const body: Record<string, unknown> = {
@@ -115,7 +143,7 @@ export class BitbucketClient {
     }
 
     const res = await this.client.post(
-      `/repositories/${this.workspace}/${repoSlug}/pullrequests`,
+      `/repositories/${this.ws(options.workspace)}/${repoSlug}/pullrequests`,
       body
     );
     return res.data;
@@ -125,10 +153,11 @@ export class BitbucketClient {
 
   async getPullRequestComments(
     repoSlug: string,
-    prId: number
+    prId: number,
+    workspace?: string
   ): Promise<{ values: Comment[] }> {
     const res = await this.client.get(
-      `/repositories/${this.workspace}/${repoSlug}/pullrequests/${prId}/comments`,
+      `/repositories/${this.ws(workspace)}/${repoSlug}/pullrequests/${prId}/comments`,
       { params: { pagelen: 50 } }
     );
     return res.data;
@@ -140,6 +169,7 @@ export class BitbucketClient {
     options: {
       content: string;
       inline?: { path: string; to: number; from?: number };
+      workspace?: string;
     }
   ): Promise<Comment> {
     const body: Record<string, unknown> = {
@@ -148,7 +178,7 @@ export class BitbucketClient {
     if (options.inline) body["inline"] = options.inline;
 
     const res = await this.client.post(
-      `/repositories/${this.workspace}/${repoSlug}/pullrequests/${prId}/comments`,
+      `/repositories/${this.ws(options.workspace)}/${repoSlug}/pullrequests/${prId}/comments`,
       body
     );
     return res.data;
@@ -158,10 +188,11 @@ export class BitbucketClient {
     repoSlug: string,
     prId: number,
     commentId: number,
-    content: string
+    content: string,
+    workspace?: string
   ): Promise<Comment> {
     const res = await this.client.put(
-      `/repositories/${this.workspace}/${repoSlug}/pullrequests/${prId}/comments/${commentId}`,
+      `/repositories/${this.ws(workspace)}/${repoSlug}/pullrequests/${prId}/comments/${commentId}`,
       { content: { raw: content } }
     );
     return res.data;
@@ -171,10 +202,11 @@ export class BitbucketClient {
 
   async getPullRequestTasks(
     repoSlug: string,
-    prId: number
+    prId: number,
+    workspace?: string
   ): Promise<{ values: Task[] }> {
     const res = await this.client.get(
-      `/repositories/${this.workspace}/${repoSlug}/pullrequests/${prId}/tasks`
+      `/repositories/${this.ws(workspace)}/${repoSlug}/pullrequests/${prId}/tasks`
     );
     return res.data;
   }
@@ -182,10 +214,11 @@ export class BitbucketClient {
   async createPullRequestTask(
     repoSlug: string,
     prId: number,
-    content: string
+    content: string,
+    workspace?: string
   ): Promise<Task> {
     const res = await this.client.post(
-      `/repositories/${this.workspace}/${repoSlug}/pullrequests/${prId}/tasks`,
+      `/repositories/${this.ws(workspace)}/${repoSlug}/pullrequests/${prId}/tasks`,
       { content: { raw: content } }
     );
     return res.data;
@@ -195,7 +228,7 @@ export class BitbucketClient {
     repoSlug: string,
     prId: number,
     taskId: number,
-    options: { content?: string; state?: "UNRESOLVED" | "RESOLVED" }
+    options: { content?: string; state?: "UNRESOLVED" | "RESOLVED"; workspace?: string }
   ): Promise<Task> {
     const body: Record<string, unknown> = {};
     if (options.content !== undefined)
@@ -203,7 +236,7 @@ export class BitbucketClient {
     if (options.state !== undefined) body["state"] = options.state;
 
     const res = await this.client.put(
-      `/repositories/${this.workspace}/${repoSlug}/pullrequests/${prId}/tasks/${taskId}`,
+      `/repositories/${this.ws(options.workspace)}/${repoSlug}/pullrequests/${prId}/tasks/${taskId}`,
       body
     );
     return res.data;
@@ -213,17 +246,19 @@ export class BitbucketClient {
 
   async getPullRequestCommitStatuses(
     repoSlug: string,
-    prId: number
+    prId: number,
+    workspace?: string
   ): Promise<{ values: Array<{ state: string; name: string; url: string; description: string; key: string }> }> {
     const res = await this.client.get(
-      `/repositories/${this.workspace}/${repoSlug}/pullrequests/${prId}/statuses`
+      `/repositories/${this.ws(workspace)}/${repoSlug}/pullrequests/${prId}/statuses`
     );
     return res.data;
   }
 
   async getPipeline(
     repoSlug: string,
-    pipelineUuid: string
+    pipelineUuid: string,
+    workspace?: string
   ): Promise<{
     uuid: string;
     state: { name: string; result?: { name: string } };
@@ -231,17 +266,18 @@ export class BitbucketClient {
     created_on: string;
   }> {
     const res = await this.client.get(
-      `/repositories/${this.workspace}/${repoSlug}/pipelines/${pipelineUuid}`
+      `/repositories/${this.ws(workspace)}/${repoSlug}/pipelines/${pipelineUuid}`
     );
     return res.data;
   }
 
   async getPipelineSteps(
     repoSlug: string,
-    pipelineUuid: string
+    pipelineUuid: string,
+    workspace?: string
   ): Promise<{ values: PipelineStep[] }> {
     const res = await this.client.get(
-      `/repositories/${this.workspace}/${repoSlug}/pipelines/${pipelineUuid}/steps`
+      `/repositories/${this.ws(workspace)}/${repoSlug}/pipelines/${pipelineUuid}/steps`
     );
     return res.data;
   }
@@ -249,10 +285,11 @@ export class BitbucketClient {
   async getPipelineStepLog(
     repoSlug: string,
     pipelineUuid: string,
-    stepUuid: string
+    stepUuid: string,
+    workspace?: string
   ): Promise<string> {
     const res = await this.client.get(
-      `/repositories/${this.workspace}/${repoSlug}/pipelines/${pipelineUuid}/steps/${stepUuid}/log`,
+      `/repositories/${this.ws(workspace)}/${repoSlug}/pipelines/${pipelineUuid}/steps/${stepUuid}/log`,
       { responseType: "text" }
     );
     return res.data as string;

@@ -1,6 +1,6 @@
 {
   "name": "@lohiavivek/bitbucket-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MCP server that exposes Bitbucket pull request and pipeline tools to AI agents",
   "main": "dist/index.js",
   "type": "module",
