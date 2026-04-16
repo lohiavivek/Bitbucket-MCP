@@ -7,16 +7,34 @@ import { BitbucketClient } from "./bitbucket-client.js";
 // ── Config from env ──────────────────────────────────────────────────────────
 
 const defaultWorkspace = process.env["BITBUCKET_WORKSPACE"];
-const apiToken = process.env["BITBUCKET_API_TOKEN"];
 
-if (!defaultWorkspace || !apiToken) {
+if (!defaultWorkspace) {
+  console.error("Missing required env var: BITBUCKET_WORKSPACE");
+  process.exit(1);
+}
+
+// Optional default token (used for getRepositories or as fallback)
+const defaultToken = process.env["BITBUCKET_API_TOKEN"];
+
+// Per-repo tokens: BITBUCKET_TOKEN_<REPO_SLUG_UPPER> e.g. BITBUCKET_TOKEN_CW_BACKEND
+const repoTokens: Record<string, string> = {};
+for (const [key, value] of Object.entries(process.env)) {
+  const match = key.match(/^BITBUCKET_TOKEN_(.+)$/);
+  if (match && value) {
+    // Convert env key back to repo slug: CW_BACKEND → cw-backend
+    const slug = match[1].toLowerCase().replace(/_/g, "-");
+    repoTokens[slug] = value;
+  }
+}
+
+if (!defaultToken && Object.keys(repoTokens).length === 0) {
   console.error(
-    "Missing required env vars: BITBUCKET_WORKSPACE, BITBUCKET_API_TOKEN"
+    "No tokens configured. Set BITBUCKET_API_TOKEN (default) or BITBUCKET_TOKEN_<REPO_SLUG> per repo."
   );
   process.exit(1);
 }
 
-const bb = new BitbucketClient({ workspace: defaultWorkspace, apiToken });
+const bb = new BitbucketClient({ workspace: defaultWorkspace, defaultToken, repoTokens });
 
 // ── Shared param: workspace ──────────────────────────────────────────────────
 

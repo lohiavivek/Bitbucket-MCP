@@ -2,7 +2,10 @@ import axios, { AxiosInstance } from "axios";
 
 export interface BitbucketConfig {
   workspace: string;
-  apiToken: string;
+  /** Fallback token used when no repo-specific token is found */
+  defaultToken?: string;
+  /** Map of repoSlug → token for per-repo tokens */
+  repoTokens?: Record<string, string>;
   baseUrl?: string;
 }
 
@@ -55,17 +58,30 @@ export interface Repository {
 
 export class BitbucketClient {
   private client: AxiosInstance;
+  private repoTokens: Record<string, string>;
+  private defaultToken?: string;
   readonly defaultWorkspace: string;
 
   constructor(config: BitbucketConfig) {
     this.defaultWorkspace = config.workspace;
+    this.repoTokens = config.repoTokens ?? {};
+    this.defaultToken = config.defaultToken;
     this.client = axios.create({
       baseURL: config.baseUrl ?? "https://api.bitbucket.org/2.0",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiToken}`,
-      },
+      headers: { "Content-Type": "application/json" },
     });
+  }
+
+  /** Resolve the token for a given repo slug */
+  private token(repoSlug: string): string {
+    const t = this.repoTokens[repoSlug] ?? this.defaultToken;
+    if (!t) throw new Error(`No token configured for repo "${repoSlug}". Set BITBUCKET_TOKEN_${repoSlug.toUpperCase().replace(/-/g, "_")} in your environment.`);
+    return t;
+  }
+
+  /** Return Axios config with the correct auth header for a repo */
+  private auth(repoSlug: string): { headers: { Authorization: string } } {
+    return { headers: { Authorization: `Bearer ${this.token(repoSlug)}` } };
   }
 
   private ws(workspace?: string): string {
@@ -78,8 +94,10 @@ export class BitbucketClient {
     workspace?: string,
     options: { page?: number; pagelen?: number } = {}
   ): Promise<{ values: Repository[]; size: number }> {
+    if (!this.defaultToken) throw new Error("No default token set. Set BITBUCKET_API_TOKEN for getRepositories.");
     const res = await this.client.get(`/repositories/${this.ws(workspace)}`, {
       params: { pagelen: options.pagelen ?? 50, page: options.page ?? 1 },
+      headers: { Authorization: `Bearer ${this.defaultToken}` },
     });
     return res.data;
   }
@@ -103,7 +121,7 @@ export class BitbucketClient {
 
     const res = await this.client.get(
       `/repositories/${this.ws(options.workspace)}/${repoSlug}/pullrequests`,
-      { params }
+      { params, ...this.auth(repoSlug) }
     );
     return res.data;
   }
@@ -114,7 +132,8 @@ export class BitbucketClient {
     workspace?: string
   ): Promise<PullRequest> {
     const res = await this.client.get(
-      `/repositories/${this.ws(workspace)}/${repoSlug}/pullrequests/${prId}`
+      `/repositories/${this.ws(workspace)}/${repoSlug}/pullrequests/${prId}`,
+      this.auth(repoSlug)
     );
     return res.data;
   }
@@ -144,7 +163,8 @@ export class BitbucketClient {
 
     const res = await this.client.post(
       `/repositories/${this.ws(options.workspace)}/${repoSlug}/pullrequests`,
-      body
+      body,
+      this.auth(repoSlug)
     );
     return res.data;
   }
@@ -158,7 +178,7 @@ export class BitbucketClient {
   ): Promise<{ values: Comment[] }> {
     const res = await this.client.get(
       `/repositories/${this.ws(workspace)}/${repoSlug}/pullrequests/${prId}/comments`,
-      { params: { pagelen: 50 } }
+      { params: { pagelen: 50 }, ...this.auth(repoSlug) }
     );
     return res.data;
   }
@@ -179,7 +199,8 @@ export class BitbucketClient {
 
     const res = await this.client.post(
       `/repositories/${this.ws(options.workspace)}/${repoSlug}/pullrequests/${prId}/comments`,
-      body
+      body,
+      this.auth(repoSlug)
     );
     return res.data;
   }
@@ -193,7 +214,8 @@ export class BitbucketClient {
   ): Promise<Comment> {
     const res = await this.client.put(
       `/repositories/${this.ws(workspace)}/${repoSlug}/pullrequests/${prId}/comments/${commentId}`,
-      { content: { raw: content } }
+      { content: { raw: content } },
+      this.auth(repoSlug)
     );
     return res.data;
   }
@@ -206,7 +228,8 @@ export class BitbucketClient {
     workspace?: string
   ): Promise<{ values: Task[] }> {
     const res = await this.client.get(
-      `/repositories/${this.ws(workspace)}/${repoSlug}/pullrequests/${prId}/tasks`
+      `/repositories/${this.ws(workspace)}/${repoSlug}/pullrequests/${prId}/tasks`,
+      this.auth(repoSlug)
     );
     return res.data;
   }
@@ -219,7 +242,8 @@ export class BitbucketClient {
   ): Promise<Task> {
     const res = await this.client.post(
       `/repositories/${this.ws(workspace)}/${repoSlug}/pullrequests/${prId}/tasks`,
-      { content: { raw: content } }
+      { content: { raw: content } },
+      this.auth(repoSlug)
     );
     return res.data;
   }
@@ -237,7 +261,8 @@ export class BitbucketClient {
 
     const res = await this.client.put(
       `/repositories/${this.ws(options.workspace)}/${repoSlug}/pullrequests/${prId}/tasks/${taskId}`,
-      body
+      body,
+      this.auth(repoSlug)
     );
     return res.data;
   }
@@ -250,7 +275,8 @@ export class BitbucketClient {
     workspace?: string
   ): Promise<{ values: Array<{ state: string; name: string; url: string; description: string; key: string }> }> {
     const res = await this.client.get(
-      `/repositories/${this.ws(workspace)}/${repoSlug}/pullrequests/${prId}/statuses`
+      `/repositories/${this.ws(workspace)}/${repoSlug}/pullrequests/${prId}/statuses`,
+      this.auth(repoSlug)
     );
     return res.data;
   }
@@ -266,7 +292,8 @@ export class BitbucketClient {
     created_on: string;
   }> {
     const res = await this.client.get(
-      `/repositories/${this.ws(workspace)}/${repoSlug}/pipelines/${pipelineUuid}`
+      `/repositories/${this.ws(workspace)}/${repoSlug}/pipelines/${pipelineUuid}`,
+      this.auth(repoSlug)
     );
     return res.data;
   }
@@ -277,7 +304,8 @@ export class BitbucketClient {
     workspace?: string
   ): Promise<{ values: PipelineStep[] }> {
     const res = await this.client.get(
-      `/repositories/${this.ws(workspace)}/${repoSlug}/pipelines/${pipelineUuid}/steps`
+      `/repositories/${this.ws(workspace)}/${repoSlug}/pipelines/${pipelineUuid}/steps`,
+      this.auth(repoSlug)
     );
     return res.data;
   }
@@ -290,7 +318,7 @@ export class BitbucketClient {
   ): Promise<string> {
     const res = await this.client.get(
       `/repositories/${this.ws(workspace)}/${repoSlug}/pipelines/${pipelineUuid}/steps/${stepUuid}/log`,
-      { responseType: "text" }
+      { responseType: "text", ...this.auth(repoSlug) }
     );
     return res.data as string;
   }
