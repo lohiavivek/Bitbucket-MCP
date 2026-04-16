@@ -1,0 +1,52 @@
+{
+  "name": "bitbucket-mcp",
+  "version": "1.0.0",
+  "description": "MCP server that exposes Bitbucket pull request and pipeline tools to AI agents",
+  "main": "dist/index.js",
+  "type": "module",
+  "license": "MIT",
+  "author": "Vivek Lohia",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "bitbucket",
+    "pull-request",
+    "pipeline",
+    "ai",
+    "claude"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lohiavivek/Bitbucket-MCP.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lohiavivek/Bitbucket-MCP/issues"
+  },
+  "homepage": "https://github.com/lohiavivek/Bitbucket-MCP#readme",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist/",
+    "src/",
+    ".env.example",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.2",
+    "axios": "^1.7.9",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
